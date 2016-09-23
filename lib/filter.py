@@ -11,35 +11,81 @@ import re
 
 def liner_parm_calc(x1, y1, x2, y2):
     '''
-    y = ax+b
+    [Arguments]
+    (R x1, R y1, R x2, R y2)
+    Two cartesian coordinates points, p1(x1, y1), p2(x2, y2)
+
+    [Return]
+    (float slope, float intercept)
+
+    [Description]
+    Return slope and intercept of the line which pass through p1 and p2.
+
+    [Warning]
+    If input vertical line, the accuracy will be low.
     '''
-    x1 = float(x1)
-    y1 = float(y1)
-    x2 = float(x2)
-    y2 = float(y2)
+    x1, y1, x2, y2 = map(float, (x1, y1, x2, y2))
     try:
         a = (y2-y1)/(x2-x1)
     except ZeroDivisionError:
         a = 100000000000
     b = y1 - a*x1
-    #print a, b
     return a, b
 
 def liner_conv(target_a, target_b, a, b, plot):
     tmp = [plot[0], target_a/a*(plot[1] - b) + target_b]
-    #print plot[1], tmp[1]
     return tmp
 
 def line_func(x, a, b):
+    '''
+    [Arguments]
+    (R x, R a, R b)
+
+    [Return]
+    (float y)
+
+    [Description]
+    Return y (y=ax+b)
+    '''
     return float(x)*float(a)+float(b)
 
 def exp1(x, a, b, c, d, e):
+    '''
+    [Arguments]
+    (R x, Ra, R b, R c, R d, R e)
+
+    [Return]
+    (float y)
+
+    [Description]
+    Return y (y = a*exp{b*x^3} + c*exp{d*x^2} + e)
+    '''
     return a*np.exp(b*x**3) + c*np.exp(d*x**2) + e
 
 def exp2(x, a, b, c):
+    '''
+    [Arguments]
+    (R x, Ra, R b, R c)
+
+    [Return]
+    (float y)
+
+    [Description]
+    Return y (y = a*exp{b*x^3})
+    '''
     return a*np.exp(b*x**3) + c
 
 def exp(x, a, b, c):
+    '''
+    [Arguments]
+    (R x, Ra, R b, R c,)
+
+    [Return]
+    (float y)
+
+    [Description]
+    Return y (y = a*exp{b*x} + c)
+    '''
     return a*np.exp(b*x) + c
 
 def func_inverse(y, a, b, c, d):
@@ -47,6 +93,19 @@ def func_inverse(y, a, b, c, d):
     return math.pow(x_3 ,1.0/3)
 
 def LPF(t, y, fp, fs):
+    '''
+    [Arguments]
+    (R_list t, R_list y, R fp, R fs)
+
+    [Return]
+    (R_list t, R_list y)
+
+    [Description]
+    Low Pass Filter.
+    fp is 通過域端周波数[Hz], fs is 阻止域端周波数[Hz].
+    Data should be the set of (time t, value y).
+    You may change the inner parameter according to your data.
+    '''
     sampling_time = 0.015
     fn = 1/(2*sampling_time)
     # パラメータ設定
@@ -74,31 +133,36 @@ def LPF(t, y, fp, fs):
     plt.show()
     '''
     return t, y1
-    
-    
 
-def fitting(filename, th=0.7):
+def fitting(filename, func):
+    '''
+    [Arguments]
+    (str filename, function func)
+
+    [Return]
+    (list parameter_of_function)
+
+    [Description]
+    Optimize the parameters of the given function according to the data in input file by scipy.optimize.curve_fit.
+    '''
+
     #filename = variance_LPF.log
     # x < 0.7
     xdata = []
     ydata = []
-    #parameter_initial = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
-    parameter_initial = np.array([0.0, 0.0, 0.0, 0.0])
+    parameter_initial = np.array([0.0]*(func.func_code.co_argcount-1))
     with open(filename, 'r') as read_file:
         for line in read_file:
             tmp = line.split(' ')
-            if float(tmp[0]) >th:
-                xdata.append(float(tmp[0]))
-                ydata.append(float(tmp[2]))
+            xdata.append(float(tmp[0]))
+               ydata.append(float(tmp[2]))
         xdata = np.array(xdata)
         ydata = np.array(ydata)
-    par_opt, covariance = scipy.optimize.curve_fit(exp, xdata, ydata, p0=parameter_initial)
-    #print par_opt
-    #y = exp1(xdata,par_opt[0],par_opt[1], par_opt[2], par_opt[3], par_opt[4])
-    y = exp(xdata, par_opt[0],par_opt[1], par_opt[2])
-    plt.plot(xdata, ydata, 'o')
-    plt.plot(xdata, y, '-')
-    plt.show()
+    par_opt, covariance = scipy.optimize.curve_fit(func, xdata, ydata, p0=parameter_initial)
+    #y = func(xdata, *par_opt)
+    #plt.plot(xdata, ydata, 'o')
+    #plt.plot(xdata, y, '-')
+    #plt.show()
     return par_opt
 
 def convert_nonliner_to_liner(filename_list, filter_file):
