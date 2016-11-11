@@ -5,9 +5,124 @@ import scipy.optimize
 import matplotlib.pylab as plt
 import math
 from scipy import signal
+from scipy import ndimage
+from skimage import filters
+from sklearn.mixture import GMM
+from scipy.stats import multivariate_normal
 import scipy.interpolate
 import os
 import re
+
+def LPF(t, y, fp, fs):
+    '''
+    [Arguments]
+    (R_list t, R_list y, R fp, R fs)
+
+    [Return]
+    (R_list t, R_list y)
+
+    [Description]
+    Low Pass Filter.
+    fp is 通過域端周波数[Hz], fs is 阻止域端周波数[Hz].
+    Data should be the set of (time t, value y).
+    You may change the inner parameter according to your data.
+    '''
+    sampling_time = 0.015
+    fn = 1/(2*sampling_time)
+    # パラメータ設定
+    #fp = 1                          # 通過域端周波数[Hz]
+    #fs = 2                          # 阻止域端周波数[Hz]
+    gpass = 1.0                       # 通過域最大損失量[dB]
+    gstop = 40.0                      # 阻止域最小減衰量[dB]
+    # 正規化
+    Wp = fp/fn
+    Ws = fs/fn
+
+    # ローパスフィルタで波形整形
+    # バターワースフィルタ
+    N, Wn = signal.buttord(Wp, Ws, gpass, gstop)
+    b1, a1 = signal.butter(N, Wn, "low")
+    y1 = signal.filtfilt(b1, a1, y)
+
+    '''
+    # プロット
+    plt.figure()
+    plt.plot(t, y, "b")
+    plt.plot(t, y1, "r", linewidth=2, label="butter")
+    plt.xlabel("Time [s]")
+    plt.ylabel("Amplitude")
+    plt.show()
+    '''
+    return t, y1
+
+
+def Smoothing_Filter(data, kernel_size=3, __MODE__="gaussian"):
+    if __MODE__ == "gaussian":
+        return ndimage.gaussian_filter(data, sigma=kernel_size)
+    elif __MODE__ == "median":
+        return ndimage.median_filter(data, kernel_size)
+
+
+def Sharpen_Filter(data, alpha=30):
+        blurred = ndimage.gaussian_filter(data, 1)
+        return data + alpha * (data - blurred)
+
+
+def Binary_Division(data):
+    val = filters.threshold_otsu(data)
+    mask = data > val
+    return mask * data
+
+
+def edge_detection(data):
+    sx = ndimage.sobel(data, axis=0, mode="constant")
+    # sy = ndimage.sobel(data, axis=1, mode="constant")
+    # sob = np.hyplot
+    # return sob
+    return sx
+
+
+def window_function(data_list, begin, end):
+    # data_list ... [ 'time pressure resistance', ..., 't p r' ] which is from line.readlines()
+    # element ... 'time pressure resistance'
+    # tmp_element ... [ time, pressure, resistance ] 
+    tmp_list = []
+    for element in data_list:
+        tmp_element = map(float, element.split(' '))
+        if begin < tmp_element[1] < end:
+            tmp_list.append(tmp_element)
+    return tmp_list
+
+
+def window_function_with_index(data_list, index, begin, end):
+    # data_list ... [ 'time pressure resistance', ..., 't p r' ] which is from line.readlines()
+    # element ... 'time pressure resistance'
+    # tmp_element ... [ time, pressure, resistance ] 
+    tmp_list = []
+    for element in data_list:
+        tmp_element = map(float, element.split(' '))
+        if begin < tmp_element[index] < end:
+            tmp_list.append(tmp_element)
+    return tmp_list
+
+
+'''
+should be exported to another lib
+'''
+
+def EM_Algorithm(data, n_components=1, covariance_type="diag"):
+    gmm = GMM(n_components, covariance_type)
+    gmm.fit(data)
+    return gmm.weights_, gmm.means_, gmm.covars_
+
+
+def draw_multivariate_gaussian(x, weights, means, covars, covariance_type="diag"):
+    var = []
+    for i in xrange(len(means)):
+        var.append(weights[i] * multivariate_normal.pdf(x, mean=means[i], cov=covars[i]))
+    return var
+
+
 
 def liner_parm_calc(x1, y1, x2, y2):
     '''
@@ -92,47 +207,6 @@ def func_inverse(y, a, b, c, d):
     x_3 = math.log(math.fabs(y-d)/a)
     return math.pow(x_3 ,1.0/3)
 
-def LPF(t, y, fp, fs):
-    '''
-    [Arguments]
-    (R_list t, R_list y, R fp, R fs)
-
-    [Return]
-    (R_list t, R_list y)
-
-    [Description]
-    Low Pass Filter.
-    fp is 通過域端周波数[Hz], fs is 阻止域端周波数[Hz].
-    Data should be the set of (time t, value y).
-    You may change the inner parameter according to your data.
-    '''
-    sampling_time = 0.015
-    fn = 1/(2*sampling_time)
-    # パラメータ設定
-    #fp = 1                          # 通過域端周波数[Hz]
-    #fs = 2                          # 阻止域端周波数[Hz]
-    gpass = 1                       # 通過域最大損失量[dB]
-    gstop = 40                      # 阻止域最小減衰量[dB]
-    # 正規化
-    Wp = fp/fn
-    Ws = fs/fn
-
-    # ローパスフィルタで波形整形
-    # バターワースフィルタ
-    N, Wn = signal.buttord(Wp, Ws, gpass, gstop)
-    b1, a1 = signal.butter(N, Wn, "low")
-    y1 = signal.filtfilt(b1, a1, y)
-
-    '''
-    # プロット
-    plt.figure()
-    plt.plot(t, y, "b")
-    plt.plot(t, y1, "r", linewidth=2, label="butter")
-    plt.xlabel("Time [s]")
-    plt.ylabel("Amplitude")
-    plt.show()
-    '''
-    return t, y1
 
 def fitting(filename, func):
     '''
@@ -155,7 +229,7 @@ def fitting(filename, func):
         for line in read_file:
             tmp = line.split(' ')
             xdata.append(float(tmp[0]))
-               ydata.append(float(tmp[2]))
+            ydata.append(float(tmp[2]))
         xdata = np.array(xdata)
         ydata = np.array(ydata)
     par_opt, covariance = scipy.optimize.curve_fit(func, xdata, ydata, p0=parameter_initial)
@@ -340,28 +414,7 @@ def liner_calibration(filename, average_data_filename, show=True, threshold=0.6)
                         write_file.write(str(tmp[time_index]) + ' ' + str(converted_plot[0]) + ' ' + str(converted_plot[1]) + '\n')
                 
 
-def window_function(data_list, begin, end):
-    # data_list ... [ 'time pressure resistance', ..., 't p r' ] which is from line.readlines()
-    # element ... 'time pressure resistance'
-    # tmp_element ... [ time, pressure, resistance ] 
-    tmp_list = []
-    for element in data_list:
-        tmp_element = map(float, element.split(' '))
-        if begin < tmp_element[1] < end:
-            tmp_list.append(tmp_element)
-    return tmp_list
 
-
-def window_function_with_index(data_list, index, begin, end):
-    # data_list ... [ 'time pressure resistance', ..., 't p r' ] which is from line.readlines()
-    # element ... 'time pressure resistance'
-    # tmp_element ... [ time, pressure, resistance ] 
-    tmp_list = []
-    for element in data_list:
-        tmp_element = map(float, element.split(' '))
-        if begin < tmp_element[index] < end:
-            tmp_list.append(tmp_element)
-    return tmp_list
 
 
 '''
