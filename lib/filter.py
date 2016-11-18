@@ -12,6 +12,8 @@ from scipy.stats import multivariate_normal
 import scipy.interpolate
 import os
 import re
+import cv2
+
 
 def LPF(t, y, fp, fs):
     '''
@@ -75,11 +77,13 @@ def Binary_Division(data):
 
 
 def edge_detection(data):
-    sx = ndimage.sobel(data, axis=0, mode="constant")
-    # sy = ndimage.sobel(data, axis=1, mode="constant")
-    # sob = np.hyplot
-    # return sob
-    return sx
+    if isinstance(data[0], list) or isinstance(data[0], np.ndarray):
+        sx = ndimage.sobel(data, axis=0, mode="constant")
+        sy = ndimage.sobel(data, axis=1, mode="constant")
+        sob = np.hypot(sx, sy)
+    else:
+        sob = ndimage.sobel(data, axis=0, mode="constant")
+    return sob
 
 
 def window_function(data_list, begin, end):
@@ -109,6 +113,44 @@ def window_function_with_index(data_list, index, begin, end):
 '''
 should be exported to another lib
 '''
+
+@profile
+def ellipse_fitting(data):
+    if not isinstance(data, np.ndarray):
+        data = np.array(data)
+
+    if data.dtype is not np.uint8:
+        # time consuming
+        data /= (max(data.flatten()) / 255)
+        data = data.astype(np.uint8)
+        # test show
+        # plt.imshow(data)
+        # plt.show()
+
+    # contours, hierarchy = cv2.findContours(data, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    # contours, hierarchy = [], []
+    # test(contours, hierarchy)
+    contours, hierarchy = cv2.findContours(data, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    for cnt in contours:
+        # exclude data of having a few points
+        # print len(cnt)
+        if len(cnt) < 1000:
+            continue
+
+        # ellipse contains ((center x, y), (size x, y), rotation)
+        # excluing ellipse whose size is small
+        ellipse = cv2.fitEllipse(cnt)
+        # if min(ellipse[1]) < 200:
+            # continue
+        cv2.ellipse(data, ellipse, (255, 255, 255), 2)
+
+    # ellipse = cv2.fitEllipse(contours[1])
+    # im = cv2.ellipse(data, ellipse, (0, 255, 0), 2)
+    # plt.imshow(data)
+    # plt.show()
+    return data
 
 def EM_Algorithm(data, n_components=1, covariance_type="diag"):
     gmm = GMM(n_components, covariance_type)
