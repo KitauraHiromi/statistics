@@ -13,9 +13,15 @@ import scipy.interpolate
 import os
 import re
 import cv2
+import sys
 from lib.overload import *
 
-
+# using line_profiler
+# INSTALL
+# pip install line_profile
+# git clone https://github.com/rkern/line_profiler.git
+# USAGE
+# python line_profiler/kernprof.py -l -v hoge.py
 
 def LPF(t, y, fp, fs):
     '''
@@ -78,6 +84,7 @@ def Binary_Division(data):
     return mask * data
 
 
+@profile
 def edge_detection(data):
     if isinstance(data[0], list) or isinstance(data[0], np.ndarray):
         sx = ndimage.sobel(data, axis=0, mode="constant")
@@ -116,7 +123,16 @@ def is_larger_than_fx(f, th, *args):
     return f(*args) < th
 
 
+def in_ellipse(el, x, y):
+    # el:[center_xy, size_ab, angle]
+    return is_larger_than_fx(rotated_ellipse, 1, (x, y), el[0], el[1], el[2])
+
+
 def ellipse(x, y, cx, cy, a, b, *args):
+    x, y, cx, cy, a, b = map(float, [x, y, cx, cy, a, b])
+    # if a, b is not long, sort axis radius
+    a /= 2.
+    b /= 2.
     return ((x - cx)/a)**2 + ((y - cy)/b)**2
 
 
@@ -133,7 +149,77 @@ def rotated_ellipse(pos, center, ab, angle, *args):
     return ellipse(x, y, cx, cy, a, b)
 
 
-def pibot(data, center, r):
+def circle_bound(y, center, r):
+    y, r = map(float, (y, r))
+    cx, cy = map(float, center)
+    D = r**2 - (y-cy)**2
+    if D > 0:
+        h = math.sqrt(D)
+        return (cx-h, cx+h)
+    return (2, 1)
+
+def ellipse_bound(y, center, size):
+    a, b = map(float, size)
+    a /= 2.
+    b /= 2.
+    y = float(y)
+    cx, cy = map(float, center)
+    D = 1 - ((y-cy)/b)**2
+    if D > 0:
+        h = a * math.sqrt(D)
+        return (cx-h, cx+h)
+    return (2, 1)
+
+
+def rotated_ellipse_bound(x, center, size, theta):
+    a, b = map(float, size)
+    a /= 2.
+    b /= 2.
+    x = float(x)
+    cx, cy = map(float, center)
+    # Ay^2 + Bxy + Cy^2 = 1
+    A = (math.sin(theta)/a)**2 + (math.cos(theta)/b)**2
+    B = math.sin(2*theta) * (1/b**2 - 1/a**2)
+    C = (math.cos(theta)/a)**2 + (math.sin(theta)/b)**2
+
+    D = (B**2 - 4*A*C) * (x-cx)**2 + 4*A
+    if D > 0:
+        h = math.sqrt(D) / (2*A)
+        t = -B/(2*a)*x
+        return (cy + t-h, cy + t+h)
+    return (2, 1)
+
+def rotated_ellipse_bound_y(y, center, size, theta):
+    a, b = map(float, size)
+    a /= 2.
+    b /= 2.
+    y = float(y)
+    cx, cy = map(float, center)
+    # Ax^2 + Bxy + Cx^2 = 1
+    A = (math.cos(theta)/a)**2 + (math.sin(theta)/b)**2
+    B = math.sin(2*theta) * (1/b**2 - 1/a**2)
+    C = (math.sin(theta)/a)**2 + (math.cos(theta)/b)**2
+
+    D = (B**2 - 4*A*C) * (y-cy)**2 + 4*A
+    if D > 0:
+        h = math.sqrt(D) / (2*A)
+        t = -B/(2*a)*y
+        return (cx + t-h, cx + t+h)
+    return (2, 1)
+
+def ellipse_pivot(data, ellipse):
+    center, size, theta = ellipse
+    xSize, ySize = map(int, data.shape)
+    for i in xrange(xSize):
+        bottom, top = map(int, rotated_ellipse_bound_y(i, center, size, theta))
+
+        if 0 < bottom < ySize:
+            data[i][:bottom] = 0
+        if 0 < top < ySize:
+            data[i][top:] = 0
+    return data
+
+def circle_pivot(data, center, r):
     r = int(r)
     x, y = map(int, center)
     for i in xrange(y-r):
@@ -152,7 +238,53 @@ def pibot(data, center, r):
 should be exported to another lib
 '''
 
-# @profile
+def between_peaks_in_line_filter(_data):
+    xSize = ySize = len(_data)
+    mean = _data.mean()
+    # print mean
+    th = 2 * 10**6
+    if mean < th:
+        return [0 for i in xrange(len(_data))]
+
+    filtered_data = _data / (mean + 1)
+    # if _data.mean() > 0.1:
+        # filtered_data = Binary_Division(data)
+    # else:
+        # filtered_data = data
+    filtered_data = Smoothing_Filter(filtered_data, kernel_size=15, __MODE__="gaussian")
+    sob = edge_detection(filtered_data)
+    tmp = [i for i in range(xSize) if sob[i] < 0.1]
+    # time consuming
+    tmp = [i for i in tmp if i-1 not in tmp and 200 < i < 1800]
+    try:
+        bottom, top = tmp[0], tmp[-1]
+    except IndexError:
+        bottom, top = 800, 800
+    return [_data[i] if bottom < i < top else 0 for i in xrange(len(_data))]
+
+
+def between_peaks_in_array_filter(_data):
+    xSize = ySize = int(math.sqrt(len(_data)))
+    print xSize, ySize
+    mean = _data.mean()
+    filtered_data = _data / (mean + 1)
+    filtered_data = Smoothing_Filter(filtered_data, kernel_size=15, __MODE__="gaussian")
+    sob = edge_detection(filtered_data)
+    sob = edge_detection(sob)
+
+    # assuming len(sob) == len(_data)
+    for i in xrange(len(sob)):
+        tmp = [j for j in range(xSize) if sob[i][j] < 0.1]
+        # time consuming
+        tmp = [j for j in tmp if j-1 not in tmp and 200 < j < 1800]
+        try:
+            bottom, top = tmp[0], tmp[-1]
+        except IndexError:
+            bottom, top = 800, 800
+        _data[i] = [_data[i][j] if bottom < j < top else 0 for j in xrange(len(_data[i]))]
+    return _data
+
+
 def ellipse_fitting(data):
     if not isinstance(data, np.ndarray):
         data = np.array(data)
@@ -174,11 +306,9 @@ def ellipse_fitting(data):
     ellipses = []
     for cnt in contours:
         # exclude data of having a few points
-        # print len(cnt)
         if len(cnt) < 1000:
             continue
 
-        # ellipse contains ((center x, y), (size x, y), rotation)
         # excluing ellipse whose size is small
         ellipse = cv2.fitEllipse(cnt)
         # ellipse: ((center_x, center_y), (a, b), angle)
@@ -195,7 +325,7 @@ def ellipse_fitting(data):
     dists = map(np.linalg.norm, [row[1] for row in ellipses])
     try:
         max_ellipse = ellipses[np.argmax(dists)]
-    except:ValueError:
+    except ValueError:
         max_ellipse = None
     return data, max_ellipse
 
