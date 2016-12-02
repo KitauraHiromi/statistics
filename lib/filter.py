@@ -13,6 +13,8 @@ import scipy.interpolate
 import os
 import re
 import cv2
+from lib.overload import *
+
 
 
 def LPF(t, y, fp, fs):
@@ -110,18 +112,54 @@ def window_function_with_index(data_list, index, begin, end):
     return tmp_list
 
 
+def is_larger_than_fx(f, th, *args):
+    return f(*args) < th
+
+
+def ellipse(x, y, cx, cy, a, b, *args):
+    return ((x - cx)/a)**2 + ((y - cy)/b)**2
+
+
+def rotate_deg(pos, center, angle):
+    x, y = pos
+    cx, cy = center
+    return ((x-cx)*math.cos(angle/180.*math.pi)+cx, (y-cy)*math.sin(angle/180.*math.pi)+cy)
+
+
+def rotated_ellipse(pos, center, ab, angle, *args):
+    x, y = rotate_deg(pos, center, -1*angle)
+    cx, cy  = center
+    a, b = ab
+    return ellipse(x, y, cx, cy, a, b)
+
+
+def pibot(data, center, r):
+    r = int(r)
+    x, y = map(int, center)
+    for i in xrange(y-r):
+        data[i][:] = 0
+
+    for i in xrange(y-r, y+r):
+        h = int(math.sqrt(r**2 - (x-i)**2))
+        data[i][:x - h] = 0
+        data[i][x + h:] = 0
+
+    for i in xrange(y+r, len(data)):
+        data[i][:] = 0
+    return data
+
 '''
 should be exported to another lib
 '''
 
-@profile
+# @profile
 def ellipse_fitting(data):
     if not isinstance(data, np.ndarray):
         data = np.array(data)
 
     if data.dtype is not np.uint8:
         # time consuming
-        data /= (max(data.flatten()) / 255)
+        # data /= (max(data.flatten()) / 255)
         data = data.astype(np.uint8)
         # test show
         # plt.imshow(data)
@@ -133,6 +171,7 @@ def ellipse_fitting(data):
     # test(contours, hierarchy)
     contours, hierarchy = cv2.findContours(data, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
+    ellipses = []
     for cnt in contours:
         # exclude data of having a few points
         # print len(cnt)
@@ -142,15 +181,23 @@ def ellipse_fitting(data):
         # ellipse contains ((center x, y), (size x, y), rotation)
         # excluing ellipse whose size is small
         ellipse = cv2.fitEllipse(cnt)
+        # ellipse: ((center_x, center_y), (a, b), angle)
+        ellipses.append(ellipse)
         # if min(ellipse[1]) < 200:
             # continue
-        cv2.ellipse(data, ellipse, (255, 255, 255), 2)
+        # cv2.ellipse(data, ellipse, (255, 255, 255), 2)
+
 
     # ellipse = cv2.fitEllipse(contours[1])
     # im = cv2.ellipse(data, ellipse, (0, 255, 0), 2)
     # plt.imshow(data)
     # plt.show()
-    return data
+    dists = map(np.linalg.norm, [row[1] for row in ellipses])
+    try:
+        max_ellipse = ellipses[np.argmax(dists)]
+    except:ValueError:
+        max_ellipse = None
+    return data, max_ellipse
 
 def EM_Algorithm(data, n_components=1, covariance_type="diag"):
     gmm = GMM(n_components, covariance_type)
