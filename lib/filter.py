@@ -14,7 +14,7 @@ import os
 import re
 import cv2
 import sys
-from lib.overload import *
+# from lib.overload import *
 
 # using line_profiler
 # INSTALL
@@ -84,7 +84,6 @@ def Binary_Division(data):
     return mask * data
 
 
-@profile
 def edge_detection(data):
     if isinstance(data[0], list) or isinstance(data[0], np.ndarray):
         sx = ndimage.sobel(data, axis=0, mode="constant")
