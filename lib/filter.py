@@ -196,7 +196,6 @@ def rotated_ellipse_bound_y(y, center, size, deg):
     cx, cy = map(float, center)
     y = float(y)
     rad = -deg / 180. * math.pi
-    # print deg, rad, a, b
     # Ax^2 + Bxy + Cx^2 = 1
     A = (math.cos(rad)/a)**2 + (math.sin(rad)/b)**2
     B = math.sin(2*rad) * (1/b**2 - 1/a**2)
@@ -206,7 +205,6 @@ def rotated_ellipse_bound_y(y, center, size, deg):
     if D > 0:
         h = math.sqrt(D) / (2*A)
         t = -B/(2*A) * (y-cy)
-        print A, B, a, y-cy, t
         return (cx + t-h, cx + t+h)
     return (2, 1)
 
