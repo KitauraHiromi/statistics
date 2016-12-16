@@ -14,6 +14,7 @@ import os
 import re
 import cv2
 import sys
+from copy import copy as shallow_copy
 # from lib.overload import *
 
 # using line_profiler
@@ -192,9 +193,10 @@ def rotated_ellipse_bound_y(y, center, size, deg):
     a, b = map(float, size)
     a /= 2.
     b /= 2.
-    y = float(y)
     cx, cy = map(float, center)
-    rad = deg / 180. * math.pi
+    y = float(y)
+    rad = -deg / 180. * math.pi
+    # print deg, rad, a, b
     # Ax^2 + Bxy + Cx^2 = 1
     A = (math.cos(rad)/a)**2 + (math.sin(rad)/b)**2
     B = math.sin(2*rad) * (1/b**2 - 1/a**2)
@@ -203,7 +205,8 @@ def rotated_ellipse_bound_y(y, center, size, deg):
     D = (B**2 - 4*A*C) * (y-cy)**2 + 4*A
     if D > 0:
         h = math.sqrt(D) / (2*A)
-        t = -B/(2*a)*y
+        t = -B/(2*A) * (y-cy)
+        print A, B, a, y-cy, t
         return (cx + t-h, cx + t+h)
     return (2, 1)
 
