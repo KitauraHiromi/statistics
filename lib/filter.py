@@ -84,7 +84,6 @@ def Binary_Division(data):
     return mask * data
 
 
-@profile
 def edge_detection(data):
     if isinstance(data[0], list) or isinstance(data[0], np.ndarray):
         sx = ndimage.sobel(data, axis=0, mode="constant")
@@ -189,16 +188,17 @@ def rotated_ellipse_bound(x, center, size, theta):
         return (cy + t-h, cy + t+h)
     return (2, 1)
 
-def rotated_ellipse_bound_y(y, center, size, theta):
+def rotated_ellipse_bound_y(y, center, size, deg):
     a, b = map(float, size)
     a /= 2.
     b /= 2.
     y = float(y)
     cx, cy = map(float, center)
+    rad = deg / 180. * math.pi
     # Ax^2 + Bxy + Cx^2 = 1
-    A = (math.cos(theta)/a)**2 + (math.sin(theta)/b)**2
-    B = math.sin(2*theta) * (1/b**2 - 1/a**2)
-    C = (math.sin(theta)/a)**2 + (math.cos(theta)/b)**2
+    A = (math.cos(rad)/a)**2 + (math.sin(rad)/b)**2
+    B = math.sin(2*rad) * (1/b**2 - 1/a**2)
+    C = (math.sin(rad)/a)**2 + (math.cos(rad)/b)**2
 
     D = (B**2 - 4*A*C) * (y-cy)**2 + 4*A
     if D > 0:
@@ -207,17 +207,19 @@ def rotated_ellipse_bound_y(y, center, size, theta):
         return (cx + t-h, cx + t+h)
     return (2, 1)
 
+
 def ellipse_pivot(data, ellipse):
     center, size, theta = ellipse
-    xSize, ySize = map(int, data.shape)
-    for i in xrange(xSize):
-        bottom, top = map(int, rotated_ellipse_bound_y(i, center, size, theta))
+    ySize, xSize = map(int, data.shape)
+    for j in xrange(ySize):
+        bottom, top = map(int, rotated_ellipse_bound_y(j, center, size, theta))
 
-        if 0 < bottom < ySize:
-            data[i][:bottom] = 0
-        if 0 < top < ySize:
-            data[i][top:] = 0
+        if 0 < bottom < xSize:
+            data[j][:bottom] = 0
+        if 0 < top < xSize:
+            data[j][top:] = 0
     return data
+
 
 def circle_pivot(data, center, r):
     r = int(r)
